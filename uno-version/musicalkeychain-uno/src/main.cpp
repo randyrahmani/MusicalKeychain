@@ -186,6 +186,14 @@ static const char LYRIC_25[] PROGMEM = "love?";
 static const char LYRIC_26[] PROGMEM = u8"언젠간 나에게도";
 static const char LYRIC_27[] PROGMEM = u8"사랑이 올까";
 
+static const char LOADING_0[] PROGMEM = "Loading.";
+static const char LOADING_1[] PROGMEM = "Loading..";
+static const char LOADING_2[] PROGMEM = "Loading...";
+
+static const char *const LOADING_FRAMES[] PROGMEM = {
+    LOADING_0, LOADING_1, LOADING_2,
+};
+
 static const char *const LYRIC_LINES[] PROGMEM = {
     LYRIC_00, LYRIC_01, LYRIC_02, LYRIC_03, LYRIC_04, LYRIC_05,
     LYRIC_06, LYRIC_07, LYRIC_08, LYRIC_09, LYRIC_10, LYRIC_10,
@@ -347,6 +355,46 @@ static void drawUtf8Line(PGM_P text, int16_t y) {
   }
 }
 
+static void showLoadingFrame(uint8_t frameIndex) {
+  PGM_P text = reinterpret_cast<PGM_P>(
+      pgm_read_ptr(&LOADING_FRAMES[frameIndex]));
+
+  display.clearDisplay();
+  drawUtf8Line(text, (SCREEN_HEIGHT - LATIN_GLYPH_HEIGHT) / 2);
+  display.display();
+}
+
+static void showLoadingAnimation() {
+  static const uint16_t TOTAL_DURATION_MS = 3500;
+  static const uint16_t BLANK_DURATION_MS = 500;
+  static const uint8_t REPEAT_COUNT = 3;
+  static const uint8_t TOTAL_FRAME_COUNT =
+      REPEAT_COUNT * ARRAY_LEN(LOADING_FRAMES);
+  const uint32_t startedAt = millis();
+
+  for (uint8_t cycle = 0; cycle < REPEAT_COUNT; ++cycle) {
+    for (uint8_t frame = 0; frame < ARRAY_LEN(LOADING_FRAMES); ++frame) {
+      showLoadingFrame(frame);
+      const uint8_t completedFrames =
+          cycle * ARRAY_LEN(LOADING_FRAMES) + frame + 1;
+      const uint32_t frameDeadline =
+          startedAt +
+          (uint32_t)completedFrames * TOTAL_DURATION_MS / TOTAL_FRAME_COUNT;
+      while ((int32_t)(frameDeadline - millis()) > 0) {
+        delay(1);
+      }
+    }
+  }
+
+  while (millis() - startedAt < TOTAL_DURATION_MS) {
+    delay(1);
+  }
+
+  display.clearDisplay();
+  display.display();
+  delay(BLANK_DURATION_MS);
+}
+
 static void showLyric(uint8_t cueIndex) {
   const uint8_t firstLine =
       pgm_read_byte(&LYRIC_CUES[cueIndex].firstLine);
@@ -419,8 +467,8 @@ void setup() {
   display.setTextSize(1);
   display.setTextWrap(false);
   display.clearDisplay();
-  display.display();
 
+  showLoadingAnimation();
   playSong();
 }
 
