@@ -28,6 +28,9 @@ static const uint8_t LATIN_GLYPH_WIDTH = 18;
 static const uint8_t LATIN_GLYPH_HEIGHT = 20;
 static const uint8_t KOREAN_SPACE_WIDTH = 8;
 static const uint8_t LINE_HEIGHT = 20;
+static const uint8_t BUILTIN_GLYPH_ADVANCE = 6;
+static const uint8_t LOADING_GREETING_Y = 12;
+static const uint8_t LOADING_TEXT_Y = 32;
 static const uint8_t ENDING_GLYPH_WIDTH = 14;
 static const uint8_t ENDING_GLYPH_HEIGHT = 16;
 static const uint8_t ENDING_SPACE_WIDTH = 4;
@@ -85,7 +88,7 @@ static const NoteEvent SONG[] PROGMEM = {
  {Ab5, 88, 88},
  {Ab5, 88, 88},
  {Gb5, 88, 88},
- {Ab5, 88, 88},
+ {Ab5, 176, 0},
  {C6, 88, 88},
  {Db5, 265, 265},
  {Ab5, 88, 88},
@@ -119,7 +122,7 @@ static const NoteEvent SONG[] PROGMEM = {
  {Gb5, 88, 88},
  {Gb5, 88, 88},
  {Gb5, 88, 88},
- {Ab5, 88, 88},
+ {Ab5, 176, 0},
  {C6, 88, 88},
  {Db5, 265, 88},
  {C6, 88, 88},
@@ -134,7 +137,7 @@ static const NoteEvent SONG[] PROGMEM = {
  {Gb5, 88, 88},
  {Gb5, 88, 88},
  {Gb5, 88, 88},
- {Ab5, 88, 88},
+ {Ab5, 176, 0},
  {C6, 88, 88},
  {Db5, 265, 265},
  {Ab5, 88, 88},
@@ -195,6 +198,7 @@ static const char LYRIC_27[] PROGMEM = u8"사랑이 올까";
 static const char LOADING_0[] PROGMEM = "Loading.";
 static const char LOADING_1[] PROGMEM = "Loading..";
 static const char LOADING_2[] PROGMEM = "Loading...";
+static const char LOADING_GREETING[] PROGMEM = "Hello <name>!";
 static const char ENDING_TITLE[] PROGMEM = "What is Love?";
 
 static const char *const LOADING_FRAMES[] PROGMEM = {
@@ -420,12 +424,24 @@ static void drawUtf8Line(PGM_P text, int16_t y) {
   }
 }
 
+static void drawCenteredSmallText(PGM_P text, int16_t y) {
+  const uint16_t width = strlen_P(text) * BUILTIN_GLYPH_ADVANCE;
+  const int16_t x = width < SCREEN_WIDTH ? (SCREEN_WIDTH - width) / 2 : 0;
+  uint8_t character;
+
+  display.setCursor(x, y);
+  while ((character = pgm_read_byte(text++)) != 0) {
+    display.write(character);
+  }
+}
+
 static void showLoadingFrame(uint8_t frameIndex) {
   PGM_P text = reinterpret_cast<PGM_P>(
       pgm_read_ptr(&LOADING_FRAMES[frameIndex]));
 
   display.clearDisplay();
-  drawUtf8Line(text, (SCREEN_HEIGHT - LATIN_GLYPH_HEIGHT) / 2);
+  drawCenteredSmallText(LOADING_GREETING, LOADING_GREETING_Y);
+  drawUtf8Line(text, LOADING_TEXT_Y);
   display.display();
 }
 
