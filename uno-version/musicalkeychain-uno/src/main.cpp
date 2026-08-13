@@ -6,6 +6,7 @@
 #include <Adafruit_SSD1306.h>
 #include <avr/pgmspace.h>
 
+#include "ending_font.h"
 #include "korean_font.h"
 
 #define ARRAY_LEN(array) (sizeof(array) / sizeof(array[0]))
@@ -28,6 +29,12 @@ static const uint8_t LATIN_GLYPH_WIDTH = 18;
 static const uint8_t LATIN_GLYPH_HEIGHT = 20;
 static const uint8_t KOREAN_SPACE_WIDTH = 8;
 static const uint8_t LINE_HEIGHT = 20;
+static const uint8_t ENDING_GLYPH_WIDTH = 14;
+static const uint8_t ENDING_GLYPH_HEIGHT = 16;
+static const uint8_t ENDING_SPACE_WIDTH = 4;
+static const uint8_t ENDING_HEART_GAP = 4;
+static const uint8_t ENDING_MAX_HEART_SIZE = 16;
+static const int8_t ENDING_TEXT_BASELINE_ADJUST = 2;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET_PIN);
 
@@ -189,6 +196,7 @@ static const char LYRIC_27[] PROGMEM = u8"사랑이 올까";
 static const char LOADING_0[] PROGMEM = "Loading.";
 static const char LOADING_1[] PROGMEM = "Loading..";
 static const char LOADING_2[] PROGMEM = "Loading...";
+static const char ENDING_TITLE[] PROGMEM = "What is Love?";
 
 static const char *const LOADING_FRAMES[] PROGMEM = {
     LOADING_0, LOADING_1, LOADING_2,
@@ -290,6 +298,64 @@ static const LatinGlyph *findLatinGlyph(uint8_t codePoint) {
   }
 
   return nullptr;
+}
+
+static const EndingGlyph *findEndingGlyph(uint8_t codePoint) {
+  uint8_t low = 0;
+  uint8_t high = ENDING_GLYPH_COUNT;
+
+  while (low < high) {
+    const uint8_t middle = low + (high - low) / 2;
+    const uint8_t candidate =
+        pgm_read_byte(&ENDING_GLYPHS[middle].codePoint);
+    if (candidate < codePoint) {
+      low = middle + 1;
+    } else if (candidate > codePoint) {
+      high = middle;
+    } else {
+      return &ENDING_GLYPHS[middle];
+    }
+  }
+
+  return nullptr;
+}
+
+static uint16_t measureEndingText(PGM_P text) {
+  uint16_t width = 0;
+  uint8_t codePoint;
+
+  while ((codePoint = pgm_read_byte(text++)) != 0) {
+    if (codePoint == ' ') {
+      width += ENDING_SPACE_WIDTH;
+    } else {
+      const EndingGlyph *glyph = findEndingGlyph(codePoint);
+      width += glyph == nullptr ? ENDING_SPACE_WIDTH
+                                : pgm_read_byte(&glyph->advance);
+    }
+  }
+
+  return width;
+}
+
+static void drawEndingText(PGM_P text, int16_t x, int16_t y) {
+  uint8_t codePoint;
+
+  while ((codePoint = pgm_read_byte(text++)) != 0) {
+    if (codePoint == ' ') {
+      x += ENDING_SPACE_WIDTH;
+      continue;
+    }
+
+    const EndingGlyph *glyph = findEndingGlyph(codePoint);
+    if (glyph == nullptr) {
+      x += ENDING_SPACE_WIDTH;
+      continue;
+    }
+
+    display.drawBitmap(x, y, glyph->bitmap, ENDING_GLYPH_WIDTH,
+                       ENDING_GLYPH_HEIGHT, SSD1306_WHITE);
+    x += pgm_read_byte(&glyph->advance);
+  }
 }
 
 static uint16_t measureUtf8Line(PGM_P text) {
@@ -395,6 +461,64 @@ static void showLoadingAnimation() {
   delay(BLANK_DURATION_MS);
 }
 
+static void drawHeart(int16_t centerX, int16_t centerY, uint8_t size) {
+  const int16_t top = centerY - size / 2;
+  const int16_t radius = size / 4;
+  const int16_t lobeY = top + radius;
+
+  display.fillCircle(centerX - radius, lobeY, radius, SSD1306_WHITE);
+  display.fillCircle(centerX + radius, lobeY, radius, SSD1306_WHITE);
+  display.fillTriangle(centerX - 2 * radius, lobeY,
+                       centerX + 2 * radius, lobeY,
+                       centerX, top + size, SSD1306_WHITE);
+}
+
+struct HeartbeatFrame {
+  uint8_t size;
+  uint16_t durationMs;
+};
+
+static const HeartbeatFrame HEARTBEAT[] PROGMEM = {
+    {12, 900},  // Resting heart.
+    {16, 120},  // One subtle pulse.
+};
+
+static void showEndingScreen() {
+  const uint16_t titleWidth = measureEndingText(ENDING_TITLE);
+  const uint16_t lineWidth =
+      titleWidth + ENDING_HEART_GAP + ENDING_MAX_HEART_SIZE;
+  const int16_t lineX =
+      lineWidth < SCREEN_WIDTH ? (SCREEN_WIDTH - lineWidth) / 2 : 0;
+  const int16_t titleY =
+      (SCREEN_HEIGHT - ENDING_GLYPH_HEIGHT) / 2 +
+      ENDING_TEXT_BASELINE_ADJUST;
+  const int16_t heartCenterX =
+      lineX + titleWidth + ENDING_HEART_GAP + ENDING_MAX_HEART_SIZE / 2;
+  const int16_t heartCenterY = SCREEN_HEIGHT / 2;
+
+  while (true) {
+    const uint32_t heartbeatStartedAt = millis();
+    uint16_t elapsedMs = 0;
+
+    for (uint8_t frame = 0; frame < ARRAY_LEN(HEARTBEAT); ++frame) {
+      const uint8_t heartSize = pgm_read_byte(&HEARTBEAT[frame].size);
+      const uint16_t durationMs =
+          pgm_read_word(&HEARTBEAT[frame].durationMs);
+
+      display.clearDisplay();
+      drawEndingText(ENDING_TITLE, lineX, titleY);
+      drawHeart(heartCenterX, heartCenterY, heartSize);
+      display.display();
+
+      elapsedMs += durationMs;
+      const uint32_t frameDeadline = heartbeatStartedAt + elapsedMs;
+      while ((int32_t)(frameDeadline - millis()) > 0) {
+        delay(1);
+      }
+    }
+  }
+}
+
 static void showLyric(uint8_t cueIndex) {
   const uint8_t firstLine =
       pgm_read_byte(&LYRIC_CUES[cueIndex].firstLine);
@@ -470,8 +594,14 @@ void setup() {
 
   showLoadingAnimation();
   playSong();
+
+  display.clearDisplay();
+  display.display();
+  delay(500);
+
+  showEndingScreen();
 }
 
 void loop() {
-  // The song plays once at power-up; keep the final lyric on screen.
+  // setup() remains in the infinite animated ending screen.
 }
